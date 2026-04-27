@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AccentEcho – 口音练习工具</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════════ HEADER ═══════════════════════════ -->
+<header>
+  <div class="header-inner">
+    <div class="logo">🎙️</div>
+    <div>
+      <h1>AccentEcho</h1>
+      <p>上传或录制参考音频 → 输入练习句子 → AI 分析口音并合成语音 → 跟读练习</p>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════════════ MAIN ════════════════════════════ -->
+<main>
+
+  <!-- ───────────────── Step 1 · Reference Audio ─────────────── -->
+  <section class="card" id="card-reference">
+    <div class="step-header">
+      <span class="step-badge">1</span>
+      <h2>上传或录制参考音频</h2>
+      <span class="step-tag" id="tag-reference"></span>
+    </div>
+
+    <!-- Tab switcher -->
+    <div class="tab-group">
+      <button class="tab active" id="tab-upload-btn">📂 上传文件</button>
+      <button class="tab" id="tab-record-btn">🎤 实时录制</button>
+    </div>
+
+    <!-- Upload panel -->
+    <div id="panel-upload">
+      <label class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" accept="audio/*" hidden />
+        <span class="upload-icon">🎵</span>
+        <p class="upload-text">点击选择，或将音频文件拖拽到此处</p>
+        <small>支持 WAV · MP3 · OGG · M4A 等，建议 15–30 秒</small>
+      </label>
+    </div>
+
+    <!-- Record panel -->
+    <div id="panel-record" hidden>
+      <div class="record-row">
+        <button class="btn btn-record" id="btn-record">🎤 开始录制</button>
+        <span class="record-timer" id="record-timer">00:00</span>
+        <span class="record-hint">建议录制 15–30 秒</span>
+      </div>
+      <canvas id="canvas-record" class="waveform-canvas" height="64"></canvas>
+    </div>
+
+    <!-- Reference preview (shown after audio is chosen) -->
+    <div id="ref-preview" hidden>
+      <div class="preview-row">
+        <audio id="audio-ref" controls></audio>
+        <button class="btn btn-sm btn-outline" id="btn-reselect">↩ 重新选择</button>
+      </div>
+      <canvas id="canvas-ref-waveform" class="waveform-canvas" height="60"></canvas>
+
+      <!-- Analysis state -->
+      <div id="analysis-status" class="analysis-status">
+        <span class="spinner" id="analysis-spinner" hidden></span>
+        <span id="analysis-msg">音频已就绪，正在分析特征…</span>
+      </div>
+
+      <!-- Analysis result cards -->
+      <div id="analysis-results" class="analysis-grid" hidden></div>
+    </div>
+  </section>
+
+  <!-- ───────────────── Step 2 · Text Input ──────────────────── -->
+  <section class="card" id="card-text">
+    <div class="step-header">
+      <span class="step-badge">2</span>
+      <h2>输入练习文字</h2>
+    </div>
+    <textarea
+      id="practice-text"
+      class="text-area"
+      placeholder="请输入您想练习的句子，例如：今天天气真不错，我们去公园散步吧。"
+      rows="4"
+    ></textarea>
+    <div class="text-footer">
+      <span>已输入 <strong id="char-count">0</strong> 字</span>
+      <small>支持中文和英文</small>
+    </div>
+  </section>
+
+  <!-- ───────────────── Step 3 · Synthesize ──────────────────── -->
+  <section class="card card-action" id="card-synthesize">
+    <button class="btn btn-primary btn-large" id="btn-synthesize" disabled>
+      ✨ 合成口音语音
+    </button>
+    <div id="synth-status" class="synth-status" hidden>
+      <span class="spinner"></span>
+      <span id="synth-msg">正在分析口音特征并合成语音，请稍候…</span>
+    </div>
+  </section>
+
+  <!-- ───────────────── Step 4 · Playback ─────────────────────── -->
+  <section class="card" id="card-playback" hidden>
+    <div class="step-header">
+      <span class="step-badge done">✓</span>
+      <h2>试听与跟读练习</h2>
+    </div>
+
+    <!-- Waveform + seek bar -->
+    <div class="waveform-wrap" id="waveform-wrap">
+      <canvas id="canvas-playback" class="waveform-canvas waveform-playback" height="80"></canvas>
+    </div>
+
+    <!-- Time bar -->
+    <div class="time-bar-row">
+      <span id="time-current">0:00</span>
+      <div class="time-track" id="time-track">
+        <div class="time-thumb" id="time-thumb"></div>
+      </div>
+      <span id="time-total">0:00</span>
+    </div>
+
+    <!-- Controls -->
+    <div class="playback-controls">
+      <!-- Play / Pause -->
+      <button class="btn btn-icon" id="btn-play-pause" title="播放 / 暂停">▶</button>
+
+      <!-- Speed -->
+      <div class="speed-group">
+        <label class="speed-label">速度</label>
+        <input
+          type="range"
+          id="speed-slider"
+          min="0.5"
+          max="1.5"
+          step="0.05"
+          value="1.0"
+          class="speed-slider"
+        />
+        <span class="speed-value" id="speed-value">1.0×</span>
+      </div>
+
+      <!-- Loop -->
+      <label class="loop-label">
+        <input type="checkbox" id="loop-toggle" />
+        <span class="loop-text">循环</span>
+      </label>
+
+      <!-- Download -->
+      <button class="btn btn-outline" id="btn-download">⬇ 下载</button>
+    </div>
+  </section>
+
+</main>
+
+<!-- ═══════════════════════════ TOAST ════════════════════════════ -->
+<div id="toast" class="toast" hidden></div>
+
+<!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
+<footer>
+  <p>AccentEcho · 口音练习工具 · 由 AI 驱动</p>
+</footer>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
