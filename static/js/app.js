@@ -57,20 +57,11 @@ function setVisible(el, visible) {
  * Encode an AudioBuffer (mono, down-mixed) into a WAV Blob.
  */
 function encodeWAV(audioBuffer) {
-  const ctx    = getAudioCtx();
-  // Down-mix to mono
-  const off    = new OfflineAudioContext(1, audioBuffer.length, audioBuffer.sampleRate);
-  const src    = off.createBufferSource();
-  src.buffer   = audioBuffer;
-  src.connect(off.destination);
-  src.start();
-  // Synchronous encode after rendering
-  const SR     = audioBuffer.sampleRate;
-  const ch     = audioBuffer.getChannelData(0);  // already rendered in offline ctx? No – use direct
-  // We do it synchronously on the raw channel data
-  const numCh  = audioBuffer.numberOfChannels;
-  const len    = audioBuffer.length;
-  const mono   = new Float32Array(len);
+  // Down-mix all channels to mono synchronously from raw channel data
+  const SR    = audioBuffer.sampleRate;
+  const numCh = audioBuffer.numberOfChannels;
+  const len   = audioBuffer.length;
+  const mono  = new Float32Array(len);
 
   for (let c = 0; c < numCh; c++) {
     const data = audioBuffer.getChannelData(c);
@@ -240,6 +231,9 @@ async function startRecording() {
 
   const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg']
     .find(t => MediaRecorder.isTypeSupported(t)) || '';
+  if (!mimeType) {
+    console.warn('AccentEcho: no preferred MIME type supported; using browser default codec');
+  }
 
   mediaRecorder  = new MediaRecorder(recordStream, mimeType ? { mimeType } : undefined);
   recordedChunks = [];
@@ -536,7 +530,7 @@ function setupPlaybackControls() {
 
   $('speed-slider').addEventListener('input', e => {
     const v = parseFloat(e.target.value);
-    $('speed-value').textContent = v.toFixed(2).replace(/\.?0+$/, '') + '×';
+    $('speed-value').textContent = formatSpeed(v);
     if (audioEl) audioEl.playbackRate = v;
   });
 
@@ -571,6 +565,13 @@ function formatTime(sec) {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/** Format a playback-rate number as a human-readable speed label, e.g. "1.0×". */
+function formatSpeed(v) {
+  // Show one decimal place; trim unnecessary trailing zero for whole numbers
+  const s = v.toFixed(1);
+  return (s.endsWith('.0') ? s.slice(0, -2) : s) + '×';
 }
 
 // ── Init ─────────────────────────────────────────────────────

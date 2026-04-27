@@ -12,6 +12,7 @@ GET  /download/<audio_id> – download synthesised WAV as attachment
 
 import os
 import uuid
+import logging
 import subprocess
 import shutil
 
@@ -33,6 +34,8 @@ OUTPUT_FOLDER = os.path.join(_BASE, "outputs")
 
 for _d in (UPLOAD_FOLDER, OUTPUT_FOLDER):
     os.makedirs(_d, exist_ok=True)
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -86,21 +89,33 @@ def analyze_voice(audio_path: str) -> dict:
 #: espeak-ng executable path
 _ESPEAK = shutil.which("espeak-ng") or "espeak-ng"
 
-#: Language code → espeak-ng voice name
+#: Language code → espeak-ng voice name.
+#: Both zh-TW and zh-CN map to the same espeak "cmn" (Mandarin) voice because
+#: espeak-ng does not distinguish Traditional from Simplified Chinese phonetically.
+#: The language detection logic outputs "zh-TW" for any CJK text.
 _VOICE_MAP: dict[str, str] = {
-    "zh-TW": "cmn",   # Mandarin Chinese
+    "zh-TW": "cmn",   # Mandarin Chinese (Traditional / Simplified share the same voice)
     "zh-CN": "cmn",
     "en":    "en",
 }
 
 
 def _tts_generate(text: str, voice: str, out_path: str, wpm: int = 150) -> None:
-    """Synthesise *text* to a WAV file using espeak-ng."""
-    cmd = [_ESPEAK, "-v", voice, "-s", str(wpm), "-w", out_path, text]
-    result = subprocess.run(cmd, capture_output=True, timeout=60)
+    """Synthesise *text* to a WAV file using espeak-ng.
+
+    Text is supplied via stdin (not as a CLI argument) to prevent any
+    possibility of argument injection.
+    """
+    cmd = [_ESPEAK, "-v", voice, "-s", str(wpm), "-w", out_path, "--stdin"]
+    result = subprocess.run(
+        cmd,
+        input=text.encode("utf-8"),
+        capture_output=True,
+        timeout=60,
+    )
     if result.returncode != 0:
         raise RuntimeError(
-            f"espeak-ng failed (rc={result.returncode}): {result.stderr.decode()}"
+            f"espeak-ng failed (rc={result.returncode})"
         )
 
 
@@ -169,6 +184,25 @@ def _valid_uuid(value: str) -> bool:
         return False
 
 
+def _safe_path(folder: str, filename: str) -> str | None:
+    """Return the resolved path only if it stays inside *folder*.
+
+    Uses ``os.path.commonpath`` so the check works correctly on all
+    platforms (including Windows drives on different roots).
+    Returns None when the resolved path escapes the expected directory
+    (path traversal guard).
+    """
+    resolved    = os.path.realpath(os.path.join(folder, filename))
+    folder_real = os.path.realpath(folder)
+    try:
+        if os.path.commonpath([resolved, folder_real]) != folder_real:
+            return None
+    except ValueError:
+        # commonpath raises ValueError on Windows when paths are on different drives
+        return None
+    return resolved
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -195,9 +229,10 @@ def analyze():
         chars = analyze_voice(save_path)
         return jsonify({"success": True, "ref_id": ref_id, "characteristics": chars})
     except Exception as exc:
+        logger.exception("Audio analysis failed")
         if os.path.exists(save_path):
             os.remove(save_path)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "音频分析失败，请检查文件格式"}), 500
 
 
 @app.route("/synthesize", methods=["POST"])
@@ -215,8 +250,8 @@ def synthesize():
     # Load reference characteristics or use safe defaults
     chars: dict
     if ref_id and _valid_uuid(ref_id):
-        ref_path = os.path.join(UPLOAD_FOLDER, ref_id + ".wav")
-        if os.path.isfile(ref_path):
+        ref_path = _safe_path(UPLOAD_FOLDER, ref_id + ".wav")
+        if ref_path and os.path.isfile(ref_path):
             try:
                 chars = analyze_voice(ref_path)
             except Exception:
@@ -230,15 +265,16 @@ def synthesize():
         audio_id = synthesize_with_accent(text, lang, chars)
         return jsonify({"success": True, "audio_id": audio_id})
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+        logger.exception("Synthesis failed")
+        return jsonify({"error": "语音合成失败，请稍后重试"}), 500
 
 
 @app.route("/audio/<audio_id>")
 def serve_audio(audio_id):
     if not _valid_uuid(audio_id):
         return jsonify({"error": "无效的音频 ID"}), 400
-    path = os.path.join(OUTPUT_FOLDER, audio_id + ".wav")
-    if not os.path.isfile(path):
+    path = _safe_path(OUTPUT_FOLDER, audio_id + ".wav")
+    if not path or not os.path.isfile(path):
         return jsonify({"error": "找不到文件"}), 404
     return send_file(path, mimetype="audio/wav")
 
@@ -247,8 +283,8 @@ def serve_audio(audio_id):
 def download_audio(audio_id):
     if not _valid_uuid(audio_id):
         return jsonify({"error": "无效的音频 ID"}), 400
-    path = os.path.join(OUTPUT_FOLDER, audio_id + ".wav")
-    if not os.path.isfile(path):
+    path = _safe_path(OUTPUT_FOLDER, audio_id + ".wav")
+    if not path or not os.path.isfile(path):
         return jsonify({"error": "找不到文件"}), 404
     return send_file(
         path,
@@ -259,4 +295,5 @@ def download_audio(audio_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    _debug = os.environ.get("FLASK_DEBUG", "0").lower() in ("1", "true", "yes", "on", "t", "y")
+    app.run(debug=_debug, host="0.0.0.0", port=5000)
