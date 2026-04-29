@@ -70,7 +70,6 @@ function setVisible(el, visible) {
  * Encode an AudioBuffer (mono, down-mixed) into a WAV Blob.
  */
 function encodeWAV(audioBuffer) {
-  // Down-mix all channels to mono synchronously from raw channel data
   const SR    = audioBuffer.sampleRate;
   const numCh = audioBuffer.numberOfChannels;
   const len   = audioBuffer.length;
@@ -94,13 +93,13 @@ function encodeWAV(audioBuffer) {
   view.setUint32(4, 36 + byteLen, true);
   ws(8, 'WAVE');
   ws(12, 'fmt ');
-  view.setUint32(16, 16, true);      // chunk size
-  view.setUint16(20, 1,  true);      // PCM
-  view.setUint16(22, 1,  true);      // 1 channel
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1,  true);
+  view.setUint16(22, 1,  true);
   view.setUint32(24, SR, true);
-  view.setUint32(28, SR * 2, true);  // byte rate
-  view.setUint16(32, 2,  true);      // block align
-  view.setUint16(34, 16, true);      // bits/sample
+  view.setUint32(28, SR * 2, true);
+  view.setUint16(32, 2,  true);
+  view.setUint16(34, 16, true);
   ws(36, 'data');
   view.setUint32(40, byteLen, true);
 
@@ -254,7 +253,6 @@ async function startRecording() {
   mediaRecorder.onstop = finaliseRecording;
   mediaRecorder.start(100);
 
-  // Live waveform
   const ctx      = getAudioCtx();
   const source   = ctx.createMediaStreamSource(recordStream);
   analyserNode   = ctx.createAnalyser();
@@ -262,7 +260,6 @@ async function startRecording() {
   source.connect(analyserNode);
   drawLiveWave($('canvas-record'), analyserNode);
 
-  // Timer
   recordSeconds = 0;
   updateRecordTimer();
   recordTimerInt = setInterval(() => {
@@ -309,7 +306,6 @@ async function setReferenceAudio(wavBlob, previewUrl) {
   refBlob = wavBlob;
   refId   = null;
 
-  // Show preview
   $('audio-ref').src = previewUrl;
   setVisible('ref-preview', true);
   setVisible('panel-upload', false);
@@ -317,14 +313,12 @@ async function setReferenceAudio(wavBlob, previewUrl) {
   setVisible('tab-upload-btn', true);
   setVisible('tab-record-btn', true);
 
-  // Draw static waveform from the WAV blob
   try {
     const arrBuf = await wavBlob.arrayBuffer();
     const audioBuf = await getAudioCtx().decodeAudioData(arrBuf.slice(0));
     drawWaveform($('canvas-ref-waveform'), audioBuf, 0, '#8b5cf6');
   } catch { /* non-critical */ }
 
-  // Auto-analyse
   $('tag-reference').textContent = '上传中…';
   $('analysis-msg').textContent  = '正在分析音频特征…';
   setVisible('analysis-status', true);
@@ -368,6 +362,7 @@ function pitchLabel(hz) {
 }
 
 function showAnalysisResults(c) {
+  refCharacteristics = c;
   const grid = $('analysis-results');
   grid.innerHTML = '';
 
@@ -412,7 +407,6 @@ function setupReselect() {
     $('tag-reference').textContent = '';
     $('analysis-results').innerHTML = '';
     setVisible('analysis-results', false);
-    // Go back to upload panel by default
     activateTab('upload');
     updateSynthButton();
   });
@@ -445,8 +439,10 @@ async function runSynthesis() {
 
   $('btn-synthesize').disabled = true;
   setVisible('synth-status', true);
-  $('synth-msg').textContent = '正在分析口音特征并合成语音，请稍候（约20–40秒）…';
+  $('synth-msg').textContent = '正在分析口音特征并合成语音，请稍候…';
   setVisible('card-playback', false);
+  setVisible('repeat-section', false);
+  setVisible('card-radar', false);
 
   try {
     const res  = await fetch('/synthesize', {
@@ -479,7 +475,6 @@ async function runSynthesis() {
 let playbackAnimFrame = null;
 
 async function setupPlayback(url) {
-  // Tear down previous instance
   if (audioEl) { audioEl.pause(); audioEl.src = ''; audioEl = null; }
   cancelAnimationFrame(playbackAnimFrame);
 
@@ -488,7 +483,6 @@ async function setupPlayback(url) {
   audioEl.preload = 'auto';
   audioEl.loop  = $('loop-toggle').checked;
 
-  // Decode for waveform drawing
   try {
     const resp    = await fetch(url);
     const arrBuf  = await resp.arrayBuffer();
@@ -496,7 +490,6 @@ async function setupPlayback(url) {
     drawWaveform($('canvas-playback'), decodedBuffer, 0);
   } catch { decodedBuffer = null; }
 
-  // Time display
   audioEl.addEventListener('loadedmetadata', () => {
     $('time-total').textContent = formatTime(audioEl.duration);
   });
@@ -515,7 +508,6 @@ async function setupPlayback(url) {
     }
   });
 
-  // Seek by clicking time track
   $('time-track').addEventListener('click', e => {
     if (!audioEl.duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -523,7 +515,6 @@ async function setupPlayback(url) {
     audioEl.currentTime = frac * audioEl.duration;
   });
 
-  // Waveform click for seek
   $('canvas-playback').addEventListener('click', e => {
     if (!audioEl.duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -534,7 +525,14 @@ async function setupPlayback(url) {
   setVisible('card-playback', true);
   $('btn-play-pause').textContent = '▶';
 
-  // Scroll into view
+  setVisible('repeat-section', true);
+  setVisible('score-display', false);
+  setVisible('canvas-repeat-wave', false);
+  setVisible('compare-status', false);
+
+  await loadAndDrawRadar();
+  refreshHistoryChart();
+
   setTimeout(() => $('card-playback').scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
 }
 
@@ -580,36 +578,10 @@ function formatTime(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-/** Format a playback-rate number as a human-readable speed label, e.g. "1.0×". */
 function formatSpeed(v) {
-  // Show one decimal place; trim unnecessary trailing zero for whole numbers
   const s = v.toFixed(1);
   return (s.endsWith('.0') ? s.slice(0, -2) : s) + '×';
 }
-
-// ── Reference Characteristics Storage ────────────────────────
-function showAnalysisResults(c) {
-  refCharacteristics = c;
-  const grid = $('analysis-results');
-  grid.innerHTML = '';
-
-  const items = [
-    { val: c.mean_pitch.toFixed(0) + ' Hz', lbl: '平均音调 · ' + pitchLabel(c.mean_pitch) },
-    { val: c.pitch_range.toFixed(0) + ' Hz', lbl: '音调范围' },
-    { val: c.speaking_rate.toFixed(1) + '/s', lbl: '语速（音节/秒）' },
-    { val: c.duration.toFixed(1) + ' s', lbl: '音频时长' },
-  ];
-
-  items.forEach(item => {
-    const div = document.createElement('div');
-    div.className = 'analysis-card';
-    div.innerHTML = `<div class="val">${item.val}</div><div class="lbl">${item.lbl}</div>`;
-    grid.appendChild(div);
-  });
-
-  setVisible('analysis-results', true);
-}
-
 
 // ── Radar Chart ──────────────────────────────────────────────
 function normalizeForRadar(chars) {
@@ -807,7 +779,7 @@ function drawLineChart(canvas, data) {
     ctx.stroke();
 
     const date = new Date(p.data.timestamp);
-    const label = (i + 1) + '#' + date.getMonth().toString().padStart(2, '0') + (date.getDate()).toString().padStart(2, '0');
+    const label = (i + 1) + '#' + String(date.getMonth() + 1).padStart(2, '0') + String(date.getDate()).padStart(2, '0');
     ctx.fillStyle = '#64748b';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'center';
@@ -994,7 +966,7 @@ async function submitRepeatRecording(wavBlob) {
 
     showScoreResult(json.result);
     
-    const history = addHistoryEntry(
+    addHistoryEntry(
       json.result.similarity_score,
       json.result.pitch_deviation_percent,
       json.result.rate_deviation_percent
@@ -1050,8 +1022,10 @@ async function loadAndDrawRadar() {
     const json = await res.json();
     
     if (res.ok && json.characteristics) {
-      drawRadarChart($('canvas-radar'), refCharacteristics, json.characteristics);
-      setVisible('card-radar', true);
+      setTimeout(() => {
+        drawRadarChart($('canvas-radar'), refCharacteristics, json.characteristics);
+        setVisible('card-radar', true);
+      }, 100);
     }
   } catch (e) {
     console.warn('Failed to load synth characteristics:', e);
@@ -1065,7 +1039,7 @@ function refreshHistoryChart() {
   if (history.length > 0) {
     setVisible('history-hint', false);
     setVisible('card-history', true);
-    setTimeout(() => drawLineChart($('canvas-history'), history), 50);
+    setTimeout(() => drawLineChart($('canvas-history'), history), 100);
   } else {
     setVisible('card-history', false);
   }
@@ -1079,23 +1053,6 @@ function setupClearHistory() {
       showToast('练习记录已清空', 'success');
     }
   });
-}
-
-
-// ── Modified setupPlayback to show repeat section ────────────
-const originalSetupPlayback = setupPlayback;
-async function setupPlayback(url) {
-  await originalSetupPlayback(url);
-  setVisible('repeat-section', true);
-  setVisible('score-display', false);
-  setVisible('canvas-repeat-wave', false);
-  
-  await loadAndDrawRadar();
-  refreshHistoryChart();
-  
-  setTimeout(() => {
-    $('repeat-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, 200);
 }
 
 
