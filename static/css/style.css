@@ -443,9 +443,127 @@ footer {
   background: var(--card);
 }
 
+/* ── Repeat / Read Aloud Section ───────────────────────────── */
+.repeat-section {
+  border-top: 1px dashed var(--border);
+  padding-top: 1rem;
+  margin-top: 1rem;
+}
+.repeat-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* ── Score Display ──────────────────────────────────────────── */
+.score-display {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #f0f3ff, #e0f2fe);
+  border-radius: 12px;
+  flex-wrap: wrap;
+}
+.score-main {
+  text-align: center;
+  min-width: 100px;
+}
+.score-value {
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.score-value.good { color: var(--success); }
+.score-value.ok { color: var(--warning); }
+.score-value.needs-work { color: var(--error); }
+.score-label {
+  font-size: .85rem;
+  color: var(--text-muted);
+  margin-top: .25rem;
+}
+.score-details {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  flex: 1;
+  min-width: 200px;
+}
+.score-detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: .5rem .75rem;
+  background: rgba(255,255,255,.7);
+  border-radius: 8px;
+}
+.detail-label {
+  font-size: .875rem;
+  color: var(--text-muted);
+}
+.detail-value {
+  font-weight: 700;
+  font-size: 1rem;
+}
+.detail-value.positive { color: var(--success); }
+.detail-value.negative { color: var(--error); }
+
+/* ── Chart Container ────────────────────────────────────────── */
+.chart-container {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin: 1rem 0;
+}
+.chart-container canvas {
+  max-width: 400px;
+  width: 100%;
+  aspect-ratio: 1;
+}
+
+/* ── Chart Legend ───────────────────────────────────────────── */
+.chart-legend {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  margin-top: .5rem;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .875rem;
+  color: var(--text-muted);
+}
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+/* ── History Section ────────────────────────────────────────── */
+#card-history .step-header {
+  justify-content: space-between;
+}
+#card-history .chart-container canvas {
+  max-width: 100%;
+  aspect-ratio: 16/9;
+  height: 200px;
+}
+.history-hint {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: .875rem;
+  padding: 2rem;
+}
+
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 520px) {
   header h1 { font-size: 1.3rem; }
   .playback-controls { gap: .75rem; }
   .btn-large { padding: .75rem 1.5rem; }
+  .score-display { flex-direction: column; gap: 1rem; }
+  .score-details { min-width: auto; width: 100%; }
 }
