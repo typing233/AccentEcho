@@ -19,6 +19,7 @@ import shutil
 import numpy as np
 import soundfile as sf
 import librosa
+from scipy.spatial.distance import cosine
 from flask import Flask, render_template, request, jsonify, send_file
 
 # ---------------------------------------------------------------------------
@@ -78,6 +79,84 @@ def analyze_voice(audio_path: str) -> dict:
         "speaking_rate": round(speaking_rate, 2),
         "rms_energy": round(rms, 5),
         "spectral_centroid": round(spec_centroid, 1),
+    }
+
+
+# ---------------------------------------------------------------------------
+# MFCC Feature Comparison for Speech Evaluation
+# ---------------------------------------------------------------------------
+
+def extract_mfcc(audio_path: str, n_mfcc: int = 13) -> np.ndarray:
+    """Extract MFCC features from audio file."""
+    y, sr = librosa.load(audio_path, sr=22050, mono=True)
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc)
+    mfcc_delta = librosa.feature.delta(mfcc)
+    mfcc_delta2 = librosa.feature.delta(mfcc, order=2)
+    features = np.vstack([mfcc, mfcc_delta, mfcc_delta2])
+    return features
+
+
+def dtw_distance(seq1: np.ndarray, seq2: np.ndarray) -> float:
+    """Compute Dynamic Time Warping distance between two sequences."""
+    n, m = seq1.shape[1], seq2.shape[1]
+    dtw_matrix = np.zeros((n + 1, m + 1))
+    dtw_matrix[0, 1:] = np.inf
+    dtw_matrix[1:, 0] = np.inf
+    
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            cost = np.linalg.norm(seq1[:, i-1] - seq2[:, j-1])
+            dtw_matrix[i, j] = cost + min(
+                dtw_matrix[i-1, j],
+                dtw_matrix[i, j-1],
+                dtw_matrix[i-1, j-1]
+            )
+    
+    return float(dtw_matrix[n, m] / max(n, m))
+
+
+def compare_voices(ref_path: str, user_path: str) -> dict:
+    """
+    Compare user's recording with reference/synthesized audio.
+    Returns similarity score and deviations in pitch/speaking rate.
+    """
+    ref_chars = analyze_voice(ref_path)
+    user_chars = analyze_voice(user_path)
+    
+    try:
+        ref_mfcc = extract_mfcc(ref_path)
+        user_mfcc = extract_mfcc(user_path)
+        
+        dtw_dist = dtw_distance(ref_mfcc, user_mfcc)
+        
+        ref_mean = np.mean(ref_mfcc, axis=1)
+        user_mean = np.mean(user_mfcc, axis=1)
+        
+        cos_sim = 1 - cosine(ref_mean, user_mean)
+        
+        raw_similarity = (cos_sim * 0.6 + max(0, 1 - dtw_dist / 100) * 0.4)
+        similarity = max(0, min(100, int(raw_similarity * 100)))
+        
+    except Exception as e:
+        logger.warning(f"MFCC comparison failed: {e}")
+        similarity = 50
+    
+    pitch_ref = ref_chars["mean_pitch"]
+    pitch_user = user_chars["mean_pitch"]
+    pitch_deviation = ((pitch_user - pitch_ref) / pitch_ref) * 100 if pitch_ref > 0 else 0
+    
+    rate_ref = ref_chars["speaking_rate"]
+    rate_user = user_chars["speaking_rate"]
+    rate_deviation = ((rate_user - rate_ref) / rate_ref) * 100 if rate_ref > 0 else 0
+    
+    return {
+        "similarity_score": similarity,
+        "pitch_deviation_percent": round(pitch_deviation, 1),
+        "rate_deviation_percent": round(rate_deviation, 1),
+        "reference_pitch_hz": pitch_ref,
+        "user_pitch_hz": pitch_user,
+        "reference_rate": rate_ref,
+        "user_rate": rate_user,
     }
 
 
@@ -292,6 +371,57 @@ def download_audio(audio_id):
         download_name="accent_echo.wav",
         mimetype="audio/wav",
     )
+
+
+@app.route("/compare", methods=["POST"])
+def compare():
+    """Compare user's recording with synthesized audio and return score."""
+    if "user_audio" not in request.files:
+        return jsonify({"error": "未提供用户录音"}), 400
+    
+    audio_id = request.form.get("audio_id", "").strip()
+    if not audio_id or not _valid_uuid(audio_id):
+        return jsonify({"error": "无效的音频 ID"}), 400
+    
+    synth_path = _safe_path(OUTPUT_FOLDER, audio_id + ".wav")
+    if not synth_path or not os.path.isfile(synth_path):
+        return jsonify({"error": "找不到合成音频"}), 404
+    
+    user_file = request.files["user_audio"]
+    user_id = str(uuid.uuid4())
+    user_tmp = os.path.join(UPLOAD_FOLDER, user_id + "_user.wav")
+    
+    try:
+        user_file.save(user_tmp)
+        result = compare_voices(synth_path, user_tmp)
+        return jsonify({"success": True, "result": result})
+    except Exception as exc:
+        logger.exception("Comparison failed")
+        return jsonify({"error": "评分计算失败"}), 500
+    finally:
+        if os.path.exists(user_tmp):
+            try:
+                os.remove(user_tmp)
+            except OSError:
+                pass
+
+
+@app.route("/analyze-output/<audio_id>")
+def analyze_output(audio_id):
+    """Get voice characteristics for synthesized audio (for radar chart)."""
+    if not _valid_uuid(audio_id):
+        return jsonify({"error": "无效的音频 ID"}), 400
+    
+    path = _safe_path(OUTPUT_FOLDER, audio_id + ".wav")
+    if not path or not os.path.isfile(path):
+        return jsonify({"error": "找不到文件"}), 404
+    
+    try:
+        chars = analyze_voice(path)
+        return jsonify({"success": True, "characteristics": chars})
+    except Exception as exc:
+        logger.exception("Output analysis failed")
+        return jsonify({"error": "特征分析失败"}), 500
 
 
 if __name__ == "__main__":

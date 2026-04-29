@@ -154,6 +154,79 @@
       <!-- Download -->
       <button class="btn btn-outline" id="btn-download">⬇ 下载</button>
     </div>
+
+    <!-- ── Read Aloud / Repeat Section ── -->
+    <div class="repeat-section" id="repeat-section" hidden>
+      <div class="step-header" style="margin-top: 1.5rem;">
+        <span class="step-badge">5</span>
+        <h2>跟读评分</h2>
+      </div>
+      
+      <div class="repeat-controls">
+        <button class="btn btn-record" id="btn-repeat-record">🎤 开始跟读</button>
+        <span class="record-timer" id="repeat-timer">00:00</span>
+        <span class="record-hint">听完合成语音后，点击录制并跟读</span>
+      </div>
+      <canvas id="canvas-repeat-wave" class="waveform-canvas" height="60" hidden></canvas>
+
+      <!-- Comparison Status -->
+      <div id="compare-status" class="analysis-status" hidden>
+        <span class="spinner"></span>
+        <span>正在评分中…</span>
+      </div>
+
+      <!-- Score Display -->
+      <div id="score-display" class="score-display" hidden>
+        <div class="score-main">
+          <div class="score-value" id="score-value">0</div>
+          <div class="score-label">相似度得分</div>
+        </div>
+        <div class="score-details">
+          <div class="score-detail-item">
+            <span class="detail-label">音调偏差</span>
+            <span class="detail-value" id="pitch-deviation">0%</span>
+          </div>
+          <div class="score-detail-item">
+            <span class="detail-label">语速偏差</span>
+            <span class="detail-value" id="rate-deviation">0%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────── Step 6 · Radar Chart ───────────────────── -->
+  <section class="card" id="card-radar" hidden>
+    <div class="step-header">
+      <span class="step-badge">6</span>
+      <h2>声音特征对比</h2>
+    </div>
+    <div class="chart-container">
+      <canvas id="canvas-radar"></canvas>
+    </div>
+    <div class="chart-legend">
+      <div class="legend-item">
+        <span class="legend-color" style="background: #8b5cf6;"></span>
+        <span>参考音频</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-color" style="background: #06b6d4;"></span>
+        <span>合成音频</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────── Step 7 · Practice History ───────────────── -->
+  <section class="card" id="card-history" hidden>
+    <div class="step-header">
+      <span class="step-badge">7</span>
+      <h2>练习记录</h2>
+      <button class="btn btn-sm btn-outline" id="btn-clear-history">清空记录</button>
+    </div>
+    <div class="chart-container">
+      <canvas id="canvas-history"></canvas>
+    </div>
+    <p class="history-hint" id="history-hint" hidden>暂无练习记录，完成一次跟读评分后将显示在此处</p>
   </section>
 
 </main>
