@@ -307,7 +307,9 @@ async function setReferenceAudio(wavBlob, previewUrl) {
   refBlob = wavBlob;
   refId   = null;
 
-  // Revoke the previous preview URL to free browser memory.
+  // Clear the element src before revoking the old URL so the browser releases its
+  // hold on the resource before we invalidate the URL.
+  $('audio-ref').src = '';
   if (refPreviewUrl) {
     URL.revokeObjectURL(refPreviewUrl);
   }
@@ -411,11 +413,11 @@ function setupReselect() {
     setVisible('ref-preview', false);
     refId   = null;
     refBlob = null;
+    $('audio-ref').src = '';
     if (refPreviewUrl) {
       URL.revokeObjectURL(refPreviewUrl);
       refPreviewUrl = null;
     }
-    $('audio-ref').src = '';
     $('tag-reference').textContent = '';
     $('analysis-results').innerHTML = '';
     setVisible('analysis-results', false);
