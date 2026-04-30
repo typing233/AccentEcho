@@ -99,10 +99,12 @@ def extract_mfcc(audio_path: str, n_mfcc: int = 13) -> np.ndarray:
 def dtw_distance(seq1: np.ndarray, seq2: np.ndarray) -> float:
     """Compute Dynamic Time Warping distance between two sequences."""
     n, m = seq1.shape[1], seq2.shape[1]
+    if max(n, m) == 0:
+        return 0.0
     dtw_matrix = np.zeros((n + 1, m + 1))
     dtw_matrix[0, 1:] = np.inf
     dtw_matrix[1:, 0] = np.inf
-    
+
     for i in range(1, n + 1):
         for j in range(1, m + 1):
             cost = np.linalg.norm(seq1[:, i-1] - seq2[:, j-1])
@@ -111,7 +113,7 @@ def dtw_distance(seq1: np.ndarray, seq2: np.ndarray) -> float:
                 dtw_matrix[i, j-1],
                 dtw_matrix[i-1, j-1]
             )
-    
+
     return float(dtw_matrix[n, m] / max(n, m))
 
 
@@ -194,7 +196,7 @@ def _tts_generate(text: str, voice: str, out_path: str, wpm: int = 150) -> None:
     )
     if result.returncode != 0:
         raise RuntimeError(
-            f"espeak-ng failed (rc={result.returncode})"
+            f"espeak-ng failed (rc={result.returncode}): {result.stderr.decode('utf-8', errors='replace').strip()}"
         )
 
 
@@ -216,11 +218,13 @@ def synthesize_with_accent(text: str, lang: str, characteristics: dict) -> str:
     _tts_generate(text, voice, tts_tmp)
 
     # 2. Load TTS audio
-    y, sr = librosa.load(tts_tmp, sr=22050, mono=True)
     try:
-        os.remove(tts_tmp)
-    except OSError:
-        pass
+        y, sr = librosa.load(tts_tmp, sr=22050, mono=True)
+    finally:
+        try:
+            os.remove(tts_tmp)
+        except OSError:
+            pass
 
     # 3. Estimate TTS pitch
     f0, voiced_flag, _ = librosa.pyin(y, fmin=80.0, fmax=500.0, sr=sr)
@@ -322,6 +326,8 @@ def synthesize():
 
     if not text:
         return jsonify({"error": "文本不能为空"}), 400
+    if len(text) > 500:
+        return jsonify({"error": "文本过长，请限制在 500 字以内"}), 400
 
     # Detect language (CJK → zh-TW, otherwise en)
     lang = "zh-TW" if any("\u4e00" <= c <= "\u9fff" for c in text) else "en"

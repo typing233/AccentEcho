@@ -11,6 +11,7 @@ let audioId       = null;   // server-assigned output audio ID
 let audioUrl      = null;   // object URL for the output WAV
 let audioEl       = null;   // <audio> element for synthesised playback
 let decodedBuffer = null;   // AudioBuffer of synthesised audio (for waveform)
+let refPreviewUrl = null;   // current object URL used for the reference audio preview
 
 // Reference characteristics (for radar chart)
 let refCharacteristics = null;
@@ -306,6 +307,12 @@ async function setReferenceAudio(wavBlob, previewUrl) {
   refBlob = wavBlob;
   refId   = null;
 
+  // Revoke the previous preview URL to free browser memory.
+  if (refPreviewUrl) {
+    URL.revokeObjectURL(refPreviewUrl);
+  }
+  refPreviewUrl = previewUrl;
+
   $('audio-ref').src = previewUrl;
   setVisible('ref-preview', true);
   setVisible('panel-upload', false);
@@ -404,6 +411,11 @@ function setupReselect() {
     setVisible('ref-preview', false);
     refId   = null;
     refBlob = null;
+    if (refPreviewUrl) {
+      URL.revokeObjectURL(refPreviewUrl);
+      refPreviewUrl = null;
+    }
+    $('audio-ref').src = '';
     $('tag-reference').textContent = '';
     $('analysis-results').innerHTML = '';
     setVisible('analysis-results', false);
@@ -508,20 +520,6 @@ async function setupPlayback(url) {
     }
   });
 
-  $('time-track').addEventListener('click', e => {
-    if (!audioEl.duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const frac = (e.clientX - rect.left) / rect.width;
-    audioEl.currentTime = frac * audioEl.duration;
-  });
-
-  $('canvas-playback').addEventListener('click', e => {
-    if (!audioEl.duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const frac = (e.clientX - rect.left) / rect.width;
-    audioEl.currentTime = frac * audioEl.duration;
-  });
-
   setVisible('card-playback', true);
   $('btn-play-pause').textContent = '▶';
 
@@ -534,6 +532,12 @@ async function setupPlayback(url) {
   refreshHistoryChart();
 
   setTimeout(() => $('card-playback').scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
+}
+
+function _seekToFrac(frac) {
+  if (audioEl && audioEl.duration) {
+    audioEl.currentTime = frac * audioEl.duration;
+  }
 }
 
 function setupPlaybackControls() {
@@ -555,6 +559,17 @@ function setupPlaybackControls() {
     a.href = `/download/${audioId}`;
     a.download = 'accent_echo.wav';
     a.click();
+  });
+
+  // Seek listeners are registered once here to avoid accumulation across syntheses.
+  $('time-track').addEventListener('click', e => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    _seekToFrac((e.clientX - rect.left) / rect.width);
+  });
+
+  $('canvas-playback').addEventListener('click', e => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    _seekToFrac((e.clientX - rect.left) / rect.width);
   });
 }
 
