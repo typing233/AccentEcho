@@ -1232,5 +1232,4 @@ def extract_f0_curve(audio_id):
 
 if __name__ == "__main__":
     _debug = os.environ.get("FLASK_DEBUG", "0").lower() in ("1", "true", "yes", "on", "t", "y")
-    _port = int(os.environ.get("FLASK_PORT", "5001"))
-    app.run(debug=_debug, host="0.0.0.0", port=_port)
+    app.run(debug=_debug, host="0.0.0.0", port=5000)

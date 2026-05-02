@@ -66,6 +66,18 @@ function setVisible(el, visible) {
   el.hidden = !visible;
 }
 
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
 // ── WAV encoder ──────────────────────────────────────────────
 /**
  * Encode an AudioBuffer (mono, down-mixed) into a WAV Blob.
@@ -1262,33 +1274,31 @@ function updateLLMStatusDisplay(connected, hasKey) {
 
 
 // ── Accent Morphing (Blender) ────────────────────────────────
+let isSynthesizingBlend = false;
+let pendingBlendValue = null;
+
 function setupAccentMorphing() {
   const morphSlider = $('morph-slider');
   const morphValue = $('morph-value');
+  
+  const debouncedAutoSynthesize = debounce(async (value) => {
+    const blend = parseInt(value) / 100;
+    if (canAutoSynthesize()) {
+      await runBlendedSynthesisInternal(blend);
+    }
+  }, 600);
   
   morphSlider.addEventListener('input', (e) => {
     const val = e.target.value;
     morphValue.innerHTML = `混合比例: <strong>${val}%</strong>`;
     
-    const text = $('practice-text').value.trim();
-    if (!text || !targetRefId) {
-      return;
-    }
-    
-    if (morphDebounceTimer) {
-      clearTimeout(morphDebounceTimer);
-    }
-    
-    morphDebounceTimer = setTimeout(async () => {
-      if (isMorphSynthesizing) return;
-      
-      const currentVal = parseInt(morphSlider.value) / 100;
-      if (currentVal === lastBlendFactor && blendedAudioId) {
-        return;
+    if (canAutoSynthesize()) {
+      if (isSynthesizingBlend) {
+        pendingBlendValue = val;
+      } else {
+        debouncedAutoSynthesize(val);
       }
-      
-      await runBlendedSynthesis({ autoPlay: true, quiet: true });
-    }, MORPH_DEBOUNCE_MS);
+    }
   });
   
   $('btn-select-target').addEventListener('click', () => {
@@ -1334,6 +1344,8 @@ function setupAccentMorphing() {
   
   $('btn-morph-synthesize').addEventListener('click', runBlendedSynthesis);
   $('btn-morph-preview').addEventListener('click', previewBlendedAudio);
+  
+  updatePreviewButtonState(false);
 }
 
 async function handleTargetAudioFile(file) {
@@ -1599,43 +1611,30 @@ function drawMiniFingerprint(canvas, chars, color) {
 
 let lastBlendFactor = -1;
 let blendedAudioId = null;
-let morphDebounceTimer = null;
-let isMorphSynthesizing = false;
-const MORPH_DEBOUNCE_MS = 350;
 
-async function runBlendedSynthesis(options = {}) {
-  const { autoPlay = false, quiet = false } = options;
-  const blend = parseInt($('morph-slider').value) / 100;
+function canAutoSynthesize() {
   const text = $('practice-text').value.trim();
-  
-  if (!text) {
-    if (!quiet) showToast('请输入练习文字', 'error');
-    return false;
+  return !!(targetRefId && refId && text);
+}
+
+async function processPendingBlend() {
+  if (pendingBlendValue !== null && canAutoSynthesize()) {
+    const val = pendingBlendValue;
+    pendingBlendValue = null;
+    const blend = parseInt(val) / 100;
+    await runBlendedSynthesisInternal(blend);
   }
+}
+
+async function runBlendedSynthesisInternal(blend) {
+  if (isSynthesizingBlend) return;
   
-  if (!targetRefId) {
-    if (!quiet) showToast('请先选择目标口音', 'error');
-    return false;
-  }
+  const text = $('practice-text').value.trim();
+  if (!text || !targetRefId) return;
   
-  if (blend === lastBlendFactor && blendedAudioId) {
-    if (autoPlay && audioEl) {
-      audioEl.currentTime = 0;
-      audioEl.play().catch(() => {});
-    }
-    return true;
-  }
-  
-  if (isMorphSynthesizing) return false;
-  isMorphSynthesizing = true;
-  
-  const synthBtn = $('btn-morph-synthesize');
-  const previewBtn = $('btn-morph-preview');
-  if (synthBtn) synthBtn.disabled = true;
-  if (previewBtn) previewBtn.disabled = true;
-  
+  isSynthesizingBlend = true;
   setVisible('morph-status', true);
-  $('morph-msg').textContent = `正在合成混合口音 ${Math.round(blend * 100)}%…`;
+  $('morph-msg').textContent = `正在合成 ${Math.round(blend * 100)}% 混合口音…`;
   
   try {
     const res = await fetch('/synthesize-blend', {
@@ -1660,32 +1659,19 @@ async function runBlendedSynthesis(options = {}) {
       await setupPlayback(audioUrl);
       
       setVisible('morph-status', false);
-      
-      if (!quiet) {
-        showToast(`混合口音已合成 (${Math.round(blend * 100)}%)`, 'success');
-      }
-      
-      if (autoPlay && audioEl) {
-        audioEl.currentTime = 0;
-        audioEl.play().catch(() => {});
-      }
-      
-      return true;
+      updatePreviewButtonState(true);
     } else {
-      if (!quiet) showToast(json.error || '合成失败', 'error');
-      return false;
+      showToast(json.error || '合成失败', 'error');
     }
   } catch (e) {
-    if (!quiet) showToast('网络错误', 'error');
-    return false;
+    showToast('网络错误', 'error');
   } finally {
-    isMorphSynthesizing = false;
-    if (synthBtn) synthBtn.disabled = false;
-    if (previewBtn) previewBtn.disabled = false;
+    isSynthesizingBlend = false;
+    processPendingBlend();
   }
 }
 
-async function previewBlendedAudio() {
+async function runBlendedSynthesis() {
   const blend = parseInt($('morph-slider').value) / 100;
   const text = $('practice-text').value.trim();
   
@@ -1699,18 +1685,33 @@ async function previewBlendedAudio() {
     return;
   }
   
-  if (audioEl && !audioEl.paused) {
-    audioEl.pause();
-    return;
+  await runBlendedSynthesisInternal(blend);
+}
+
+function updatePreviewButtonState(hasLastSynth) {
+  const btn = $('btn-morph-preview');
+  if (hasLastSynth && blendedAudioId) {
+    btn.classList.remove('disabled');
+    btn.disabled = false;
+  } else {
+    btn.classList.add('disabled');
+    btn.disabled = true;
   }
-  
-  if (blend === lastBlendFactor && blendedAudioId && audioEl) {
-    audioEl.currentTime = 0;
-    audioEl.play().catch(() => showToast('播放失败', 'error'));
-    return;
+}
+
+async function previewBlendedAudio() {
+  if (blendedAudioId) {
+    if (audioId !== blendedAudioId || !audioEl) {
+      audioId = blendedAudioId;
+      audioUrl = `/audio/${audioId}`;
+      await setupPlayback(audioUrl);
+    }
+    if (audioEl && audioEl.paused) {
+      audioEl.play().catch(() => showToast('播放失败', 'error'));
+    }
+  } else {
+    showToast('暂无已合成的音频，请先拖动滑块合成', 'error');
   }
-  
-  await runBlendedSynthesis({ autoPlay: true, quiet: false });
 }
 
 
