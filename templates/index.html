@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AccentEcho – 口音练习工具</title>
+  <title>AccentEcho v2.0 – 口音练习工具</title>
   <link rel="stylesheet" href="/static/css/style.css" />
 </head>
 <body>
@@ -13,9 +13,10 @@
   <div class="header-inner">
     <div class="logo">🎙️</div>
     <div>
-      <h1>AccentEcho</h1>
+      <h1>AccentEcho <span class="version-badge">v2.0</span></h1>
       <p>上传或录制参考音频 → 输入练习句子 → AI 分析口音并合成语音 → 跟读练习</p>
     </div>
+    <button class="btn btn-icon header-settings" id="btn-settings" title="设置">⚙</button>
   </div>
 </header>
 
@@ -216,6 +217,321 @@
     </div>
   </section>
 
+  <!-- ───────────────── Step 6b · Accent Morphing ───────────────── -->
+  <section class="card" id="card-morph" hidden>
+    <div class="step-header">
+      <span class="step-badge">6B</span>
+      <h2>口音变形器</h2>
+    </div>
+    
+    <p class="morph-hint">拖动滑块在参考口音和目标口音之间进行实时变形合成</p>
+    
+    <div class="morph-controls">
+      <div class="morph-source">
+        <div class="morph-source-left">
+          <div class="morph-badge ref-badge">参考口音</div>
+          <div class="morph-preview" id="morph-preview-ref">
+            <canvas id="canvas-morph-ref" class="fingerprint-mini"></canvas>
+          </div>
+        </div>
+        
+        <div class="morph-slider-area">
+          <div class="morph-slider-container">
+            <input
+              type="range"
+              id="morph-slider"
+              min="0"
+              max="100"
+              value="0"
+              class="morph-slider"
+            />
+            <div class="morph-track-marks">
+              <span>0%</span>
+              <span>25%</span>
+              <span>50%</span>
+              <span>75%</span>
+              <span>100%</span>
+            </div>
+          </div>
+          <div class="morph-value" id="morph-value">混合比例: <strong>0%</strong></div>
+        </div>
+        
+        <div class="morph-source-right">
+          <div class="morph-badge target-badge">目标口音</div>
+          <div class="morph-preview" id="morph-preview-target">
+            <canvas id="canvas-morph-target" class="fingerprint-mini"></canvas>
+          </div>
+          <div class="morph-target-select" id="morph-target-select" hidden>
+            <button class="btn btn-sm btn-outline" id="btn-select-target">选择目标口音</button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="morph-actions">
+        <button class="btn btn-primary" id="btn-morph-synthesize" disabled>
+          ✨ 实时合成
+        </button>
+        <button class="btn btn-outline" id="btn-morph-preview">
+          🔈 预览当前
+        </button>
+      </div>
+      
+      <div id="morph-status" class="morph-status" hidden>
+        <span class="spinner"></span>
+        <span id="morph-msg">正在合成混合口音…</span>
+      </div>
+    </div>
+    
+    <!-- Target Selection Modal -->
+    <div id="target-select-modal" class="modal-overlay" hidden>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>选择目标口音</h3>
+          <button class="btn btn-sm btn-outline modal-close" id="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="target-upload-options">
+            <div class="target-option">
+              <button class="btn btn-outline" id="btn-upload-target">📂 上传目标音频</button>
+              <input type="file" id="target-file-input" accept="audio/*" hidden />
+            </div>
+            <div class="target-option">
+              <button class="btn btn-outline" id="btn-record-target">🎤 录制目标口音</button>
+            </div>
+          </div>
+          <div id="target-preview" hidden>
+            <div class="preview-row">
+              <audio id="audio-target" controls></audio>
+            </div>
+            <canvas id="canvas-target-wave" class="waveform-canvas" height="60"></canvas>
+            <div id="target-analysis-status" class="analysis-status" hidden>
+              <span class="spinner"></span>
+              <span>正在分析目标口音特征…</span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" id="btn-cancel-target">取消</button>
+          <button class="btn btn-primary" id="btn-confirm-target" disabled>确认选择</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────── Step 6c · Voice Fingerprint ─────────────── -->
+  <section class="card" id="card-fingerprint" hidden>
+    <div class="step-header">
+      <span class="step-badge">6C</span>
+      <h2>口音指纹图</h2>
+    </div>
+    
+    <div class="fingerprint-layout">
+      <div class="fingerprint-display">
+        <canvas id="canvas-fingerprint" class="fingerprint-canvas"></canvas>
+        <div class="fingerprint-info">
+          <div class="fingerprint-color-dot" id="fp-color-dot"></div>
+          <div class="fingerprint-id" id="fp-id">ID: —</div>
+          <div class="fingerprint-uniqueness" id="fp-uniqueness">独特性: —</div>
+        </div>
+      </div>
+      
+      <div class="fingerprint-controls">
+        <div class="fp-mode-selector">
+          <button class="btn btn-sm fp-mode-btn active" data-mode="single">单人口音</button>
+          <button class="btn btn-sm fp-mode-btn" data-mode="compare">双人对比</button>
+        </div>
+        
+        <div id="fp-compare-select" hidden>
+          <div class="fp-compare-info">
+            <div class="fp-compare-item">
+              <span class="legend-color" style="background: #8b5cf6;"></span>
+              <span>口音 A (参考)</span>
+            </div>
+            <div class="fp-compare-item">
+              <span class="legend-color" id="fp-compare-color2"></span>
+              <span>口音 B (对比)</span>
+            </div>
+          </div>
+          <div class="fp-similarity-score" id="fp-similarity" hidden>
+            <div class="fp-sim-label">整体相似度</div>
+            <div class="fp-sim-value" id="fp-sim-value">—</div>
+          </div>
+          <button class="btn btn-sm btn-outline" id="btn-select-fp-compare">选择对比口音</button>
+        </div>
+        
+        <div class="fp-actions">
+          <button class="btn btn-outline" id="btn-export-fp">📥 导出 PNG</button>
+          <button class="btn btn-outline" id="btn-refresh-fp">🔄 刷新指纹</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────── Enhanced Repeat Section with Pitch Chase ── -->
+  <section class="card" id="card-playback" hidden>
+    <div class="step-header">
+      <span class="step-badge done">✓</span>
+      <h2>试听与跟读练习</h2>
+    </div>
+
+    <!-- Waveform + seek bar -->
+    <div class="waveform-wrap" id="waveform-wrap">
+      <canvas id="canvas-playback" class="waveform-canvas waveform-playback" height="80"></canvas>
+    </div>
+
+    <!-- Time bar -->
+    <div class="time-bar-row">
+      <span id="time-current">0:00</span>
+      <div class="time-track" id="time-track">
+        <div class="time-thumb" id="time-thumb"></div>
+      </div>
+      <span id="time-total">0:00</span>
+    </div>
+
+    <!-- Controls -->
+    <div class="playback-controls">
+      <button class="btn btn-icon" id="btn-play-pause" title="播放 / 暂停">▶</button>
+
+      <div class="speed-group">
+        <label class="speed-label">速度</label>
+        <input
+          type="range"
+          id="speed-slider"
+          min="0.5"
+          max="1.5"
+          step="0.05"
+          value="1.0"
+          class="speed-slider"
+        />
+        <span class="speed-value" id="speed-value">1.0×</span>
+      </div>
+
+      <label class="loop-label">
+        <input type="checkbox" id="loop-toggle" />
+        <span class="loop-text">循环</span>
+      </label>
+
+      <button class="btn btn-outline" id="btn-download">⬇ 下载</button>
+    </div>
+
+    <!-- ── Read Aloud / Repeat Section ── -->
+    <div class="repeat-section" id="repeat-section" hidden>
+      <div class="step-header" style="margin-top: 1.5rem;">
+        <span class="step-badge">5</span>
+        <h2>跟读评分</h2>
+      </div>
+      
+      <!-- Mode Selector -->
+      <div class="mode-selector">
+        <button class="btn btn-sm mode-btn active" data-mode="standard">🎯 标准模式</button>
+        <button class="btn btn-sm mode-btn" data-mode="chase">🎮 音高追逐</button>
+      </div>
+      
+      <!-- Standard Mode (Original) -->
+      <div id="standard-mode-panel">
+        <div class="repeat-controls">
+          <button class="btn btn-record" id="btn-repeat-record">🎤 开始跟读</button>
+          <span class="record-timer" id="repeat-timer">00:00</span>
+          <span class="record-hint">听完合成语音后，点击录制并跟读</span>
+        </div>
+        <canvas id="canvas-repeat-wave" class="waveform-canvas" height="60" hidden></canvas>
+
+        <div id="compare-status" class="analysis-status" hidden>
+          <span class="spinner"></span>
+          <span>正在评分中…</span>
+        </div>
+
+        <div id="score-display" class="score-display" hidden>
+          <div class="score-main">
+            <div class="score-value" id="score-value">0</div>
+            <div class="score-label">相似度得分</div>
+          </div>
+          <div class="score-details">
+            <div class="score-detail-item">
+              <span class="detail-label">音调偏差</span>
+              <span class="detail-value" id="pitch-deviation">0%</span>
+            </div>
+            <div class="score-detail-item">
+              <span class="detail-label">语速偏差</span>
+              <span class="detail-value" id="rate-deviation">0%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Pitch Chase Mode (NEW v2.0) -->
+      <div id="chase-mode-panel" hidden>
+        <div class="chase-intro">
+          <p>🎮 <strong>音高追逐模式</strong>：实时追踪你的音调与目标音调的匹配度</p>
+        </div>
+        
+        <!-- Pitch Visualization Canvas -->
+        <div class="chase-canvas-container">
+          <canvas id="canvas-pitch-chase" class="chase-canvas"></canvas>
+          <div class="chase-overlay" id="chase-overlay" hidden>
+            <div class="chase-start-hint" id="chase-start-hint">准备开始...</div>
+          </div>
+        </div>
+        
+        <!-- Real-time Stats -->
+        <div class="chase-stats" id="chase-stats" hidden>
+          <div class="stat-item">
+            <div class="stat-label">实时得分</div>
+            <div class="stat-value" id="chase-realtime-score">0</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">连击</div>
+            <div class="stat-value combo-value" id="chase-combo">0</div>
+            <div class="stat-label">连击</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">当前音高</div>
+            <div class="stat-value small" id="chase-current-pitch">— Hz</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">目标音高</div>
+            <div class="stat-value small" id="chase-target-pitch">— Hz</div>
+          </div>
+        </div>
+        
+        <!-- Controls -->
+        <div class="chase-controls">
+          <button class="btn btn-primary" id="btn-start-chase">▶ 开始追逐</button>
+          <button class="btn btn-record" id="btn-chase-record" hidden>🎤 录制跟读</button>
+          <button class="btn btn-outline" id="btn-stop-chase" hidden>⏹ 停止</button>
+          <button class="btn btn-outline" id="btn-reset-chase">🔄 重置</button>
+        </div>
+        
+        <div class="chase-status" id="chase-status" hidden>
+          <span class="spinner"></span>
+          <span id="chase-msg">正在提取目标音高曲线…</span>
+        </div>
+        
+        <!-- Final Score Display for Chase Mode -->
+        <div id="chase-final-score" class="score-display" hidden>
+          <div class="score-main">
+            <div class="score-value" id="chase-final-value">0</div>
+            <div class="score-label">音高追逐得分</div>
+          </div>
+          <div class="score-details">
+            <div class="score-detail-item">
+              <span class="detail-label">最高连击</span>
+              <span class="detail-value" id="chase-max-combo">0</span>
+            </div>
+            <div class="score-detail-item">
+              <span class="detail-label">完美帧</span>
+              <span class="detail-value positive" id="chase-perfect-frames">0%</span>
+            </div>
+            <div class="score-detail-item">
+              <span class="detail-label">优秀帧</span>
+              <span class="detail-value" id="chase-good-frames">0%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ───────────────── Step 7 · Practice History ───────────────── -->
   <section class="card" id="card-history" hidden>
     <div class="step-header">
@@ -233,6 +549,80 @@
 
 <!-- ═══════════════════════════ TOAST ════════════════════════════ -->
 <div id="toast" class="toast" hidden></div>
+
+<!-- ═══════════════════════════ SETTINGS MODAL (LLM) ════════════════ -->
+<div id="settings-modal" class="modal-overlay" hidden>
+  <div class="modal-content modal-settings">
+    <div class="modal-header">
+      <h3>⚙ 设置</h3>
+      <button class="btn btn-sm btn-outline modal-close" id="settings-close">&times;</button>
+    </div>
+    
+    <div class="modal-body">
+      <!-- LLM Configuration Section -->
+      <div class="settings-section">
+        <h4 class="settings-section-title">🤖 LLM 配置</h4>
+        <p class="settings-hint">配置 OpenAI 兼容的 API，用于高级语音分析和提示生成</p>
+        
+        <div class="form-group">
+          <label for="llm-base-url">API Base URL</label>
+          <input
+            type="text"
+            id="llm-base-url"
+            class="form-input"
+            placeholder="https://api.openai.com/v1 或其他兼容地址"
+          />
+          <small class="form-hint">支持 OpenAI 兼容的 API 格式，包括本地部署的模型</small>
+        </div>
+        
+        <div class="form-group">
+          <label for="llm-api-key">API Key</label>
+          <input
+            type="password"
+            id="llm-api-key"
+            class="form-input"
+            placeholder="sk-... （如不需要可留空"
+          />
+          <div class="form-actions-inline">
+            <button class="btn btn-sm btn-outline" id="btn-toggle-api-key">显示</button>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="llm-model-name">模型名称</label>
+          <input
+            type="text"
+            id="llm-model-name"
+            class="form-input"
+            placeholder="例如: gpt-3.5-turbo, claude-3-opus"
+          />
+        </div>
+        
+        <div class="settings-actions">
+          <button class="btn btn-outline" id="btn-test-llm">
+            <span id="test-llm-text">🔍 测试连接</span>
+          </button>
+          <button class="btn btn-primary" id="btn-save-llm-config">💾 保存配置</button>
+        </div>
+        
+        <div id="llm-test-result" class="llm-status" hidden>
+          <span class="llm-status-icon" id="llm-status-icon">✓</span>
+          <span class="llm-status-text" id="llm-status-text"></span>
+        </div>
+        
+        <div class="llm-config-status" id="llm-config-status" hidden>
+          <span class="config-dot" id="config-dot"></span>
+          <span class="config-text" id="config-text">已保存配置</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="modal-footer">
+      <button class="btn btn-outline" id="settings-cancel">取消</button>
+      <button class="btn btn-primary" id="settings-save">保存并关闭</button>
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
 <footer>
